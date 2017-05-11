@@ -6,6 +6,8 @@ The purpose of `miniPaaS` is to be able to add local changes using Git, Commit t
 
 Note: You will need to setup `Apache` or `Nginx` yourself, `miniPaaS` does not handle this aspect of your application.
 
+<img src="https://raw.githubusercontent.com/mrvautin/minipaas/master/demo.gif" width="640">
+
 ## Installation
 
 ### # Local machine
