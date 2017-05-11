@@ -1,0 +1,45 @@
+{
+    "name": "minipaas",
+    "version": "0.0.1",
+    "private": false,
+    "description": "A simple Push-to-deploy PaaS system = `git add` > `git commit` > `minipaas deploy`",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "bin": {
+        "minipaas": "index.js"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "archiver": "^1.3.0",
+        "async": "^2.4.0",
+        "chalk": "^1.1.3",
+        "cli-spinner": "^0.2.6",
+        "commander": "^2.9.0",
+        "lodash": "^4.17.4",
+        "node-ssh": "^4.2.2",
+        "ora": "^1.2.0",
+        "prompt": "^1.0.0",
+        "recursive-readdir": "^2.1.1",
+        "scp2": "^0.5.0"
+    },
+    "keywords": [
+        "paas",
+        "minipaas",
+        "git",
+        "push-to-deploy",
+        "ssh",
+        "scp",
+        "push to deploy"
+    ],
+    "author": "Mark Moffat",
+    "homepage": "https://markmoffat.com",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/mrvautin/minipaas.git"
+    },
+    "bugs": {
+        "url": "https://github.com/mrvautin/minipaas/issues"
+    }
+}
