@@ -1,6 +1,6 @@
 {
   "name": "minipaas",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": false,
   "description": "A simple Push-to-deploy PaaS system = `git add` > `git commit` > `minipaas deploy`",
   "main": "index.js",

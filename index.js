@@ -415,8 +415,9 @@ function deploy(commit, args){
                 if(err){
                     log(chalk.red('Error connecting via SSH: Error code: ', err.code));
                     process.exit(5);
+                }else{
+                    callback();
                 }
-                callback();
             });
         },
         createZip: function(callback){
@@ -444,18 +445,9 @@ function deploy(commit, args){
         },
         removeFiles: function(callback){
             log(chalk.yellow('[INFO] Updating files. Depending on the changes this might take a while...'));
-            if(gitRemoveFileList.length === 0){
-                gitRemoveFileList.push('nullfile');
-            }
-
-            // loop files to remove
-            async.forEach(gitRemoveFileList, function(file, callback){
-                if(file === 'nullfile'){
-                    // as there was no files to remove, set the array to nothing
-                    gitRemoveFileList = [];
-                    callback();
-                }else{
-                    // remove files
+            if(gitRemoveFileList.length > 0){
+                // loop files to remove
+                async.eachSeries(gitRemoveFileList, function(file, removeCallback){
                     spinner.start();
                     sshClient.connect(sshOptions)
                     .then(function(){
@@ -463,32 +455,32 @@ function deploy(commit, args){
                             spinner.stop();
                             if(result.code === 0){
                                 log(chalk.grey('[INFO] File removed: ' + file));
-                                callback();
+                                removeCallback();
                             }else{
                                 log(chalk.red('[ERROR] Removing file: ' + file));
-                                callback(result.stderr);
+                                removeCallback(result.stderr);
                             }
                         });
                     });
-                }
-            }, function(err){
-                // handle error, success
-                if(err){
-                    spinner.stop();
-                    // dont kill the app on failed deleted files. Just warn for manual cleanup
-                    if(err.toString().substring(0, 17) === 'rm: cannot remove'){
-                        log(chalk.red('[ERROR] The following files could not be deleted: ', err));
+                }, function(err){
+                    // handle error, success
+                    if(err){
+                        spinner.stop();
+                        // dont kill the app on failed deleted files. Just warn for manual cleanup
+                        if(err.toString().substring(0, 17) === 'rm: cannot remove'){
+                            log(chalk.red('[ERROR] The following files could not be deleted: ', err));
+                            callback();
+                        }else{
+                            log(chalk.red('[ERROR] The process failed due to: ', err));
+                            process.exit(5);
+                        }
                     }else{
-                        log(chalk.red('[ERROR] The process failed due to: ', err));
-                        process.exit(5);
+                        callback();
                     }
-                }else{
-                    if(gitRemoveFileList.length > 0 && gitRemoveFileList[0] !== 'nullfile'){
-                        log(chalk.yellow('[INFO] All files successfully removed'));
-                    }
-                    callback();
-                }
-            });
+                });
+            }else{
+                callback();
+            }
         },
         checkRemoveDir: function(callback){
             // create dir if doesnt exist
@@ -505,7 +497,7 @@ function deploy(commit, args){
                 scpClient.scp(workingCommit + '.zip', connectOpts, function(err){
                     spinner.stop();
                     if(err){
-                        console.log('Failed to upload the payload', err);
+                        log(chalk.red('[ERROR] Failed to upload the payload: ', err));
                         callback(err);
                     }
 
@@ -532,7 +524,10 @@ function deploy(commit, args){
                     });
                 });
             }else{
-                log(chalk.red('[ERROR] Zip file doesnt exist'));
+                // show message if there was supposed to be a zip
+                if(gitUpdateFileList.lenght > 0){
+                    log(chalk.red('[ERROR] Zip file doesnt exist'));
+                }
                 callback();
             }
         },
@@ -590,31 +585,31 @@ function createZip(files, filename, callback){
     // callback if no files
     if(typeof files === 'undefined' || files.length === 0){
         callback();
+    }else{
+        // build our zip
+        var archive = archiver('zip', {
+            store: true
+        });
+
+        var zipFile = fs.createWriteStream(filename);
+        _.forEach(files, function(value){
+            archive.file(value);
+        });
+
+        // write our zip file to disk
+        archive.finalize();
+        archive.pipe(zipFile);
+
+        // catch zip writing errors
+        archive.on('error', function(err){
+            callback(err);
+        });
+
+        // zip write complete
+        zipFile.on('close', function(){
+            callback();
+        });
     }
-
-    // build our zip
-    var archive = archiver('zip', {
-        store: true
-    });
-
-    var zipFile = fs.createWriteStream(filename);
-    _.forEach(files, function(value){
-        archive.file(value);
-    });
-
-    // write our zip file to disk
-    archive.finalize();
-    archive.pipe(zipFile);
-
-    // catch zip writing errors
-    archive.on('error', function(err){
-        callback(err);
-    });
-
-    // zip write complete
-    zipFile.on('close', function(){
-        callback();
-    });
 }
 
 function runCommands(noRestartApp, callback){
@@ -696,10 +691,13 @@ function runCommands(noRestartApp, callback){
 
 // Test the SSH connection credentials
 function testSSH(callback){
+    spinner.start();
     sshClient.connect(sshOptions)
     .then(function(){
+        spinner.stop();
         callback();
     }).catch(function(err){
+        spinner.stop();
         callback(err);
     });
 }
@@ -707,17 +705,19 @@ function testSSH(callback){
 // Test the SCP connection credentials
 function testSCP(callback){
     // upload a test file - Seems there is no better way
+    spinner.start();
     scpClient.write({
         destination: path.join(config.remotePath, 'textscpfile.txt'),
         content: new Buffer(8)
     }, function(err, data){
+        spinner.stop();
         if(err){
             callback(err);
         }else{
             // remove the test file
             sshClient.connect(sshOptions)
             .then(function(){
-                sshClient.execCommand('rm -rf textscpfile.txt', {cwd: config.remotePath}).then(function(result){
+                sshClient.execCommand('rm -rf textscpfile.txt', {cwd: config.remotePath}).then(function(result){   
                     callback();
                 });
             }).catch(function(err){
