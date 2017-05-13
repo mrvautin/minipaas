@@ -263,7 +263,7 @@ function rebuild(){
                     checkSCPLogin: function(callback){
                         testSCP(function(err){
                             if(err){
-                                log(chalk.red('Error connecting via SCP: Error code: ', err.code));
+                                log(chalk.red('Error connecting via SCP: Error code: ', err));
                                 process.exit(5);
                             }
                             callback();
@@ -404,7 +404,7 @@ function deploy(commit, args){
         checkSCPLogin: function(callback){
             testSCP(function(err){
                 if(err){
-                    log(chalk.red('Error connecting via SCP: Error code: ', err.code));
+                    log(chalk.red('Error connecting via SCP: Error code: ', err));
                     process.exit(5);
                 }
                 callback();
