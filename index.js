@@ -233,6 +233,9 @@ function compare(){
 function rebuild(){
     prompt.start();
 
+    // setup scp defaults
+    scpClient.defaults(connectOpts);
+
     // remove old local rebuild.zip
     execSync('rm -rf rebuild.zip');
 
@@ -384,12 +387,25 @@ function deploy(commit, args){
     var workingCommit = gitLastCommit;
 
     // get our changes
-    var gitUpdateFilesCommand = execSync('git show --all --pretty=format: --name-only --diff-filter=ARCMTUXB ' + gitLastCommit);
+    var gitUpdateFilesCommand = execSync('git show --all --pretty=format: --name-only --diff-filter=ACMTUXB ' + gitLastCommit);
+    var gitRenamedFilesCommand = execSync('git show --all --pretty=format: --name-status --diff-filter=R ' + gitLastCommit);
+
     var gitRemoveFilesCommand = execSync('git show --all --pretty=format: --name-only --diff-filter=D ' + gitLastCommit);
     var gitCommitMessage = execSync('git log -n 1 --pretty=format:%s ' + gitLastCommit).toString();
 
     var gitUpdateFileList = gitUpdateFilesCommand.toString().split('\n').filter(function(n){ return n !== ''; });
     var gitRemoveFileList = gitRemoveFilesCommand.toString().split('\n').filter(function(n){ return n !== ''; });
+
+    // build a list of renamed files in commit
+    var gitRenameFileList = [];
+    _.forEach(gitRenamedFilesCommand.toString().split('\n'), function(value){
+        if(value !== ''){
+            var lineArray = value.split('\t');
+            if(lineArray.length === 3){
+                gitRenameFileList.push({from: lineArray[1], to: lineArray[2]});
+            }
+        }
+    });
 
     // check if commit exits in the successful stored array
     if(typeof commit === 'undefined' || commit === null && typeof config.commits !== 'undefined' && typeof config.commits[workingCommit] !== 'undefined'){
@@ -426,7 +442,11 @@ function deploy(commit, args){
             });
         },
         outputFileListDefails: function(callback){
-            log(chalk.yellow('[INFO] Files listed for deploy'));
+            // if there are files to update or remove then display the output
+            if(gitUpdateFileList.length > 0 || gitRemoveFileList.length > 0){
+                log(chalk.yellow('[INFO] Files listed for deploy'));
+            }
+
             _.forEach(gitUpdateFileList, function(value){
                 log(chalk.grey('-> ' + value + ' (Update)'));
             });
@@ -435,7 +455,7 @@ function deploy(commit, args){
             });
 
             // if git commit list equals undefined or empty
-            if(gitRemoveFileList.length === 0 && gitUpdateFileList.length === 0){
+            if(gitRemoveFileList.length === 0 && gitUpdateFileList.length === 0 && gitRenameFileList.length === 0){
                 log(chalk.yellow('[INFO] No files to deploy. Run commands: "#git add ." then "#git commit -m \'My commit message\'"'));
                 process.exit(5);
             }
@@ -443,9 +463,83 @@ function deploy(commit, args){
             // finish and callback
             callback();
         },
+        renameFiles: function(callback){
+            if(gitRenameFileList.length > 0){
+                log(chalk.yellow('[INFO] Renaming files'));
+                // holds a list of folders we need to clean up at the end
+                var foldersChanged = [];
+                async.eachSeries(gitRenameFileList, function(file, renameCallback){
+                    spinner.start();
+                    var fromPath = path.dirname(file.from);
+                    var toPath = path.dirname(file.to);
+
+                    // build our rename command
+                    var command = 'mkdir -p ' + toPath + ' && mv -f ' + file.from + ' ' + file.to;
+
+                    // check to see if folder has changed
+                    if(fromPath !== toPath){
+                        var fromArray = fromPath.split('/');
+                        var toArray = toPath.split('/');
+                        var removePath = '';
+                        for(var i = 0; i < fromArray.length; i++){
+                            if(fromArray[i] !== toArray[i]){
+                                removePath = path.join(removePath, fromArray[i]);
+                                foldersChanged.push(removePath);
+                                break;
+                            }else{
+                                removePath = path.join(removePath, fromArray[i]);
+                            }
+                        };
+                    }
+
+                    // exec our command
+                    sshClient.execCommand(command, {cwd: config.remotePath}).then(function(result){
+                        spinner.stop();
+                        if(result.code !== 0){
+                            log(chalk.red('[ERROR] Renamed: ' + file.from + ' => ' + file.to) + chalk.red(' - Result: Failed'));
+                            renameCallback(result.stderr);
+                        }else{
+                            log(chalk.grey('[INFO] Renamed: ' + file.from + ' => ' + file.to) + chalk.grey(' - Result: Success'));
+                            renameCallback();
+                        }
+                    });
+                }, function(err){
+                    spinner.stop();
+                    // handle error, success
+                    if(err){
+                        log(chalk.red('[ERROR] The process failed due to: ', err));
+                        process.exit(5);
+                    }else{
+                        if(foldersChanged.length > 0){
+                            async.eachSeries(foldersChanged, function(folder, cleanupCallback){
+                                sshClient.connect(sshOptions)
+                                .then(function(){
+                                    sshClient.execCommand('rm -rf ' + folder, {cwd: config.remotePath}).then(function(result){
+                                        spinner.stop();
+                                        if(result.code === 0){
+                                            log(chalk.grey('[INFO] Removed renamed folder: ' + folder));
+                                            cleanupCallback();
+                                        }else{
+                                            log(chalk.red('[ERROR] Could not remove renamed folder: ' + folder));
+                                            cleanupCallback(result.stderr);
+                                        }
+                                    });
+                                });
+                            }, function(err){
+                                callback();
+                            });
+                        }else{
+                            callback();
+                        }
+                    }
+                });
+            }else{
+                callback();
+            }
+        },
         removeFiles: function(callback){
-            log(chalk.yellow('[INFO] Updating files. Depending on the changes this might take a while...'));
             if(gitRemoveFileList.length > 0){
+                log(chalk.yellow('[INFO] Removing any deleted files'));
                 // loop files to remove
                 async.eachSeries(gitRemoveFileList, function(file, removeCallback){
                     spinner.start();
@@ -493,6 +587,7 @@ function deploy(commit, args){
         },
         uploadZip: function(callback){
             if(fs.existsSync(workingCommit + '.zip')){
+                log(chalk.yellow('[INFO] Updating files. Depending on the changes this might take a while...'));
                 spinner.start();
                 scpClient.scp(workingCommit + '.zip', connectOpts, function(err){
                     spinner.stop();
@@ -717,7 +812,7 @@ function testSCP(callback){
             // remove the test file
             sshClient.connect(sshOptions)
             .then(function(){
-                sshClient.execCommand('rm -rf textscpfile.txt', {cwd: config.remotePath}).then(function(result){   
+                sshClient.execCommand('rm -rf textscpfile.txt', {cwd: config.remotePath}).then(function(result){
                     callback();
                 });
             }).catch(function(err){

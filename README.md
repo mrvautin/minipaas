@@ -8,6 +8,8 @@ Note: You will need to setup `Apache` or `Nginx` yourself, `miniPaaS` does not h
 
 <img src="https://raw.githubusercontent.com/mrvautin/minipaas/master/demo.gif" width="640">
 
+> Note: Remote Windows servers are not currently supported
+
 ## Installation
 
 ### # Local machine
