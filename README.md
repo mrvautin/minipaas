@@ -53,7 +53,8 @@ The `init` command will lead to the following prompts which you can fill in for 
 5. `Host password` - An optional password to connect to your server if a keyfile is not used
 6. `Keyfile path` - The path to your local keyfile used to authenticate against your remote server
 7. `Remote path to app` - This is the path to the root of your application hosted on your remote server
-8. `The process name or index of app in PM2` - Here you can provide an existing PM2 process name or index. If left blank, a new process is started using the `App name` entered earlier 
+8. `disablePm2` - A boolean (true/false) value as to whether to disable the starting/restarting of the app in PM2
+9. `The process name or index of app in PM2` - Here you can provide an existing PM2 process name or index. If left blank, a new process is started using the `App name` entered earlier 
 
 The `.minipaas` config file can also be manually edited:
 

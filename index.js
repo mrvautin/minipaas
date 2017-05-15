@@ -117,6 +117,7 @@ function init(){
     var hostPassword = typeof config.hostPassword === 'undefined' || config.hostPassword === '' ? '' : '(' + config.hostPassword + ')';
     var hostKeyFilePath = typeof config.hostKeyFilePath === 'undefined' || config.hostKeyFilePath === '' ? '' : '(' + config.hostKeyFilePath + ')';
     var remotePath = typeof config.remotePath === 'undefined' || config.remotePath === '' ? '' : '(' + config.remotePath + ')';
+    var disablePm2 = typeof config.disablePm2 === 'undefined' || config.disablePm2 === '' ? false : '(' + config.disablePm2 + ')';
     var pm2ProcessName = typeof config.pm2ProcessName === 'undefined' || config.pm2ProcessName === '' ? '' : '(' + config.pm2ProcessName + ')';
 
     // show prompts
@@ -144,6 +145,9 @@ function init(){
             remotePath: {
                 description: chalk.grey('Remote path to app ') + chalk.cyan(remotePath)
             },
+            disablePm2: {
+                description: chalk.grey('Disable PM2 (true/false) ') + chalk.cyan(disablePm2)
+            },
             pm2ProcessName: {
                 description: chalk.grey('The process name or index of app in PM2 (leave blank to start new) ') + chalk.cyan(pm2ProcessName)
             }
@@ -157,6 +161,7 @@ function init(){
             config.hostPassword = result.hostPassword !== '' && result.hostPassword !== null ? result.hostPassword : config.hostPassword;
             config.hostKeyFilePath = result.hostKeyFilePath !== '' && result.hostKeyFilePath !== null ? result.hostKeyFilePath : config.hostKeyFilePath;
             config.remotePath = result.remotePath !== '' && result.remotePath !== null ? result.remotePath : config.remotePath;
+            config.disablePm2 = result.disablePm2 !== '' && result.disablePm2 !== null ? (result.disablePm2.toLowerCase() === 'true') : config.disablePm2;
             config.pm2ProcessName = result.pm2ProcessName !== '' && result.pm2ProcessName !== null ? result.pm2ProcessName : config.pm2ProcessName;
 
             // write out the file
@@ -248,7 +253,7 @@ function rebuild(){
             }
         }
     }, function (err, result){
-        if(!err && result.rebuildWarning === 'yes'){
+        if(!err && result.rebuildWarning.toLowerCase() === 'yes'){
             var ignore = [
                 'node_modules',
                 '.git',
@@ -711,22 +716,25 @@ function runCommands(noRestartApp, callback){
     var sshCommands = [];
     sshCommands.push({cmd: 'npm install'});
 
-    // if there is a pm2 index supplied
-    if(typeof config.pm2ProcessName !== 'undefined' && config.pm2ProcessName !== ''){
-        // add to the list of commands
-        sshCommands.push({cmd: 'pm2 restart ' + config.pm2ProcessName});
-    }else{
-        // do a simple start on the package.json main entry point with a name of in the packag.json file
-        if(typeof packageJsonConfig.scripts.start === 'undefined'){
-            log(chalk.red('[ERROR] Cannot start a new PM2 process as the start script in the package.json has not been set'));
-            process.exit(0);
-        }
-        // set the new process name in the config
-        config.pm2ProcessName = packageJsonConfig.name;
+    // if pm2 disabled, skip adding the start/restart command
+    if(config.disablePm2 !== true){
+        // if there is a pm2 index supplied
+        if(typeof config.pm2ProcessName !== 'undefined' && config.pm2ProcessName !== ''){
+            // add to the list of commands
+            sshCommands.push({cmd: 'pm2 restart ' + config.pm2ProcessName});
+        }else{
+            // do a simple start on the package.json main entry point with a name of in the packag.json file
+            if(typeof packageJsonConfig.scripts.start === 'undefined'){
+                log(chalk.red('[ERROR] Cannot start a new PM2 process as the start script in the package.json has not been set'));
+                process.exit(0);
+            }
+            // set the new process name in the config
+            config.pm2ProcessName = packageJsonConfig.name;
 
-        // set the restart command and save
-        sshCommands.push({cmd: 'pm2 start ' + packageJsonConfig.scripts.start + ' -n ' + packageJsonConfig.name});
-        sshCommands.push({cmd: 'pm2 save'});
+            // set the restart command and save
+            sshCommands.push({cmd: 'pm2 start ' + packageJsonConfig.scripts.start + ' -n ' + packageJsonConfig.name});
+            sshCommands.push({cmd: 'pm2 save'});
+        }
     }
 
     // if no restart arg supplied, remove the command
